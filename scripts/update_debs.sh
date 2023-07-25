@@ -7,4 +7,5 @@ rm -rf requirements-*.txt
 # Install dev dependencies.
 pip install pip-tools
 # Update the deps.
-pip-compile /home/vatche/.work/ketabkala_invoice/requirements.in -o /home/vatche/.work/ketabkala_invoice/requirements.txt
+pip-compile /home/vatche/.work/sitemaps/requirements.in -o /home/vatche/.work/sitemaps/requirements.txt
+

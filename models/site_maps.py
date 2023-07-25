@@ -20,5 +20,4 @@ class SiteMapsDigikala(Model):
         database = ketabkala_database
 
 
-# Create the tables in the database
 SiteMapsDigikala.create_table(fail_silently=True)
