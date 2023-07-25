@@ -8,3 +8,5 @@ aiohttp_socks
 pytest
 Beautifulsoup4
 lxml
+fake_useragent
+pandas

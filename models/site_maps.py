@@ -13,9 +13,10 @@ ketabkala_database = PostgresqlDatabase(
 
 
 class SiteMapsDigikala(Model):
+    sitemap_url = TextField()
     loc = TextField()
-    changefreq = TextField()
     priority = FloatField()
+
     class Meta:
         database = ketabkala_database
 
