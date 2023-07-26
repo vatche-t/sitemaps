@@ -16,6 +16,7 @@ from models.site_maps import SiteMapsDigikala
 
 
 DEFAULT_SITEMAP_URLS = [
+    "/sitemap.xml",
     "/sitemap-index.xml",
     "/sitemap.php",
     "/sitemap.txt",
@@ -41,7 +42,7 @@ def get_sitemap_urls_from_robots_txt(url, headers):
         robots_txt = robots_response.text
 
         # Use regular expression to find all the Sitemap URLs
-        sitemap_urls = re.findall(r"Sitemap:\s*(.*)", robots_txt)
+        sitemap_urls = re.findall(r"(?i)sitemap:\s*(.*)", robots_txt)
         logger.info("sitemap URLs found in robots.txt.")
 
         # If no sitemap URLs found, use the default sitemap URLs
@@ -60,7 +61,7 @@ def process_sitemap_file(extracted_file_path, sitemap_url):
     try:
         sitemaps_df = pd.read_xml(extracted_file_path)
         sitemaps_df["sitemap_url"] = sitemap_url
-        logger.info(f"saved to dataframe: {extracted_file_path}")
+        logger.info(f"saved to dataframe: {sitemap_url}")
         return sitemaps_df
     except Exception as e:
         logger.error(f"Failed to process file: {extracted_file_path}. Error: {e}")
@@ -90,7 +91,14 @@ def download_and_extract_gz(url, destination_folder):
                 logger.warning(f"URL is forbidden: {url}")
                 return None
 
-        if url.endswith(".gz"):
+        if response.url.endswith(".xml.gz"):
+            try:
+                sitemap_xml = response.text
+            except Exception as e:
+                logger.warning(f"Skipping processing. Error while decompressing: {url}. Error: {e}")
+                return None
+
+        elif url.endswith(".gz"):
             try:
                 decompressed_content = gzip.decompress(response.content)
                 # Convert bytes to a string using UTF-8 encoding
@@ -215,14 +223,14 @@ def process_nested_sitemaps(xml_content, extracted_file_paths):
 def main():
     ua = UserAgent()
     headers = {"User-Agent": ua.random}  # Select a random user-agent for each request
-    url = "https://www.basalam.com"
+    url = "https://www.divar.ir"
     sitemap_urls = get_sitemap_urls_from_robots_txt(url, headers)
 
     # Loop through each sitemap URL and attempt to process it
     for sitemap_url in sitemap_urls:
         try:
             # Send a request to the current sitemap URL
-            get_site_map = requests.get(sitemap_url, headers=headers)
+            get_site_map = requests.get(sitemap_url)
             get_site_map.raise_for_status()
 
             # Check if the response contains a forbidden message
@@ -240,6 +248,10 @@ def main():
             # Process nested sitemaps
             extracted_file_paths = []
             process_nested_sitemaps(sitemap_xml, extracted_file_paths)
+            # Check if extracted_file_paths is not empty
+            if not extracted_file_paths:
+                logger.warning(f"No sitemap files were extracted for: {sitemap_url}")
+                continue
 
             # Create an empty DataFrame to store the combined sitemaps
             combined_sitemaps_df = pd.DataFrame()
