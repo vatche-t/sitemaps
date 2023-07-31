@@ -33,7 +33,9 @@ def get_sitemap_urls_from_robots_txt(url):
     try:
         ua = UserAgent()
         headers = {"User-Agent": ua.random}
-        robots_response = requests.get(f"{url.rstrip('/')}/robots.txt", allow_redirects=False, headers=headers)
+        robots_response = requests.get(
+            f"{url.rstrip('/')}/robots.txt", allow_redirects=False, headers=headers, timeout=5
+        )
 
         # Check if the response is a redirect
         if robots_response.is_redirect:
@@ -50,13 +52,21 @@ def get_sitemap_urls_from_robots_txt(url):
         # If no sitemap URLs found, use the default sitemap URLs
         if not sitemap_urls:
             logger.warning("No sitemap URLs found in robots.txt. Using default sitemap URLs.")
-            sitemap_urls = [f"{url.rstrip('/')}{default_url}" for default_url in DEFAULT_SITEMAP_URLS]
+            sitemap_urls = []
+
+        # Additional list to hold final sitemap URLs
+        final_sitemap_urls = [f"{url.rstrip('/')}{default_url}" for default_url in DEFAULT_SITEMAP_URLS]
+
+        # Always extend sitemap_urls with final_sitemap_urls
+        sitemap_urls.extend(final_sitemap_urls)
 
         return sitemap_urls
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to download robots.txt. Error: {e}")
-        return []
+        # If connection failed, return sitemap_urls including the final_sitemap_urls
+        final_sitemap_urls = [f"{url.rstrip('/')}{default_url}" for default_url in DEFAULT_SITEMAP_URLS]
+        return final_sitemap_urls
 
 
 def process_sitemap_file(extracted_file_path, sitemap_url):
@@ -82,7 +92,7 @@ def download_and_extract_gz(url, destination_folder):
     try:
         if url.endswith(".xml") or url.endswith(".gz"):
             try:
-                response = requests.get(url, headers=headers)
+                response = requests.get(url, headers=headers, timeout=5)
                 response.raise_for_status()
 
                 if response.headers.get("content-type") == "application/json" and "error" in response.text.lower():
@@ -205,7 +215,7 @@ def process_nested_sitemaps(xml_content, extracted_file_paths):
 
     # Loop through .xml/.gz URLs and download them
     for url in xml_or_gz_urls:
-        get_site_map_raw = requests.get(url, headers=headers)
+        get_site_map_raw = requests.get(url, headers=headers, timeout=5)
         get_site_map_raw.raise_for_status()
 
         # Check if the response contains a forbidden message
@@ -245,7 +255,7 @@ def process_nested_sitemaps(xml_content, extracted_file_paths):
 def main():
     ua = UserAgent()
     headers = {"User-Agent": ua.random}  # Select a random user-agent for each request
-    url = "https://www.dayanshop.ir"
+    url = "https://www.webramz.com"
     sitemap_urls = get_sitemap_urls_from_robots_txt(url)
 
     # Initialize an empty list to store all extracted file paths
@@ -254,7 +264,7 @@ def main():
     # Loop through each sitemap URL and attempt to process it
     for sitemap_url in sitemap_urls:
         try:
-            get_site_map = requests.get(sitemap_url, headers=headers)
+            get_site_map = requests.get(sitemap_url, headers=headers, timeout=5)
             get_site_map.raise_for_status()
 
             if "forbidden" in get_site_map.text.lower():
