@@ -29,8 +29,10 @@ DEFAULT_SITEMAP_URLS = [
 ]
 
 
-def get_sitemap_urls_from_robots_txt(url, headers):
+def get_sitemap_urls_from_robots_txt(url):
     try:
+        ua = UserAgent()
+        headers = {"User-Agent": ua.random}
         robots_response = requests.get(f"{url.rstrip('/')}/robots.txt", allow_redirects=False, headers=headers)
 
         # Check if the response is a redirect
@@ -78,45 +80,58 @@ def download_and_extract_gz(url, destination_folder):
     ua = UserAgent()
     headers = {"User-Agent": ua.random}  # Select a random user-agent for each request
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-
-        if response.headers.get("content-type") == "application/json" and "error" in response.text.lower():
-            error_data = json.loads(response.text)
-            if (
-                "error" in error_data
-                and "message" in error_data["error"]
-                and "forbidden" in error_data["error"]["message"].lower()
-            ):
-                logger.warning(f"URL is forbidden: {url}")
-                return None
-
-        if response.url.endswith(".xml.gz"):
+        if url.endswith(".xml") or url.endswith(".gz"):
             try:
-                sitemap_xml = response.text
-            except Exception as e:
-                logger.warning(f"Skipping processing. Error while decompressing: {url}. Error: {e}")
-                return None
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
 
-        elif url.endswith(".gz"):
-            try:
-                decompressed_content = gzip.decompress(response.content)
-                # Convert bytes to a string using UTF-8 encoding
-                sitemap_xml = decompressed_content.decode("utf-8")
-            except Exception as e:
-                logger.warning(f"Skipping processing. Error while decompressing: {url}. Error: {e}")
-                return None
+                if response.headers.get("content-type") == "application/json" and "error" in response.text.lower():
+                    error_data = json.loads(response.text)
+                    if (
+                        "error" in error_data
+                        and "message" in error_data["error"]
+                        and "forbidden" in error_data["error"]["message"].lower()
+                    ):
+                        logger.warning(f"URL is forbidden: {url}")
+                        return None
+
+                if response.url.endswith(".xml.gz"):
+                    try:
+                        sitemap_xml = response.text
+                    except Exception as e:
+                        logger.warning(f"Skipping processing. Error while decompressing: {url}. Error: {e}")
+                        return None
+
+                elif url.endswith(".gz"):
+                    try:
+                        decompressed_content = gzip.decompress(response.content)
+                        # Convert bytes to a string using UTF-8 encoding
+                        sitemap_xml = decompressed_content.decode("utf-8")
+                    except Exception as e:
+                        logger.warning(f"Skipping processing. Error while decompressing: {url}. Error: {e}")
+                        return None
+                else:
+                    sitemap_xml = response.text
+
+                # Check if the decompressed/decoded content is in valid XML format
+                try:
+                    pd.read_xml(sitemap_xml)
+                except Exception as e:
+                    logger.warning(f"Skipping processing. Invalid XML format: {url}. Error: {e}")
+                    return None
+
+                return sitemap_xml
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Failed to download: {url}. Error: {e}")
         else:
-            sitemap_xml = response.text
+            try:
+                pd.read_xml(sitemap_xml)
+            except Exception as e:
+                logger.warning(f"Skipping processing. Invalid XML format: {url}. Error: {e}")
+                return None
 
-        # Check if the decompressed/decoded content is in valid XML format
-        try:
-            pd.read_xml(sitemap_xml)
-        except Exception as e:
-            logger.warning(f"Skipping processing. Invalid XML format: {url}. Error: {e}")
-            return None
-
-        return sitemap_xml
+            return sitemap_xml
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to download: {url}. Error: {e}")
@@ -158,7 +173,14 @@ def process_nested_sitemaps(xml_content, extracted_file_paths):
     ua = UserAgent()
     headers = {"User-Agent": ua.random}
     destination_folder = "sitemap_files"
-    loc_tags = re.findall(r"<loc>(.*?)</loc>", xml_content)
+    if xml_content.endswith(".xml"):
+        loc_tags = re.findall(r"<loc>(.*?)</loc>", xml_content)
+
+        if not loc_tags:
+            # If loc_tags is empty, skip processing and use xml_content as loc_tags
+            loc_tags = [xml_content]
+    else:
+        loc_tags = [xml_content]
 
     # Lists to store URLs with .xml/.gz and nested sitemaps respectively
     xml_or_gz_urls = []
@@ -223,40 +245,49 @@ def process_nested_sitemaps(xml_content, extracted_file_paths):
 def main():
     ua = UserAgent()
     headers = {"User-Agent": ua.random}  # Select a random user-agent for each request
-    url = "https://www.divar.ir"
-    sitemap_urls = get_sitemap_urls_from_robots_txt(url, headers)
+    url = "https://www.dayanshop.ir"
+    sitemap_urls = get_sitemap_urls_from_robots_txt(url)
+
+    # Initialize an empty list to store all extracted file paths
+    extracted_file_paths = []
 
     # Loop through each sitemap URL and attempt to process it
     for sitemap_url in sitemap_urls:
         try:
-            # Send a request to the current sitemap URL
-            get_site_map = requests.get(sitemap_url)
+            get_site_map = requests.get(sitemap_url, headers=headers)
             get_site_map.raise_for_status()
 
-            # Check if the response contains a forbidden message
             if "forbidden" in get_site_map.text.lower():
                 logger.warning(f"URL is forbidden: {sitemap_url}")
                 continue
 
-            # If the response is valid, proceed with processing the sitemap
             sitemap_xml = get_site_map.text
 
-            # Destination folder to store the extracted files
             destination_folder = "sitemap_files"
             os.makedirs(destination_folder, exist_ok=True)
+            loc_tags = re.findall(r"<loc>(.*?)</loc>", sitemap_xml)
 
-            # Process nested sitemaps
-            extracted_file_paths = []
-            process_nested_sitemaps(sitemap_xml, extracted_file_paths)
-            # Check if extracted_file_paths is not empty
-            if not extracted_file_paths:
-                logger.warning(f"No sitemap files were extracted for: {sitemap_url}")
-                continue
+            xml_or_gz_urls = []
+            for loc_tag in loc_tags:
+                if is_xml_or_gz_url(loc_tag):
+                    xml_or_gz_urls.append(loc_tag)
+
+            has_xml_urls = any(is_xml_or_gz_url(url) for url in loc_tags)
+
+            if has_xml_urls:
+                # Process each URL in xml_or_gz_urls and accumulate extracted files
+                for loc_tag in xml_or_gz_urls:
+                    process_nested_sitemaps(loc_tag, extracted_file_paths)
+            else:
+                extracted_file_path = sitemap_xml
+                if extracted_file_path:
+                    extracted_file_paths.append(extracted_file_path)
+                    logger.info(f"Extracted: {get_site_map.url}")
 
             # Create an empty DataFrame to store the combined sitemaps
             combined_sitemaps_df = pd.DataFrame()
 
-            # Read the contents of each sitemap file into a Pandas DataFrame
+            # Read the contents of each extracted sitemap file into a Pandas DataFrame
             with concurrent.futures.ProcessPoolExecutor() as executor:
                 # Submit tasks to read and process sitemap files
                 futures = [
@@ -278,11 +309,8 @@ def main():
                 dataframe_batch = combined_sitemaps_df.iloc[batch_start : batch_start + batch_size]
                 read_sitemap_and_save_to_db(dataframe_batch)
 
-            # Exit the loop if a valid sitemap response is found
-            break
-
         except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to download sitemap.xml. Error: {e}")
+            logger.error(f"Failed to download sitemap.xml. url: {sitemap_url}  Error: {e}")
             continue
 
 
