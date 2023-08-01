@@ -69,21 +69,15 @@ def get_sitemap_urls_from_robots_txt(url):
         return final_sitemap_urls
 
 
-def process_sitemap_file(extracted_file_path, sitemap_url):
+def process_sitemap_file(extracted_xmls, sitemap_url):
     try:
-        sitemaps_df = pd.read_xml(extracted_file_path)
-        sitemaps_df["sitemap_url"] = sitemap_url
+        sitemaps_dataframe = pd.read_xml(extracted_xmls)
+        sitemaps_dataframe["sitemap_url"] = sitemap_url
         logger.info(f"saved to dataframe: {sitemap_url}")
-        return sitemaps_df
+        return sitemaps_dataframe
     except Exception as e:
-        logger.error(f"Failed to process file: {extracted_file_path}. Error: {e}")
+        logger.error(f"Failed to process file: {extracted_xmls}. Error: {e}")
         return None
-
-
-def generate_unique_filename(url):
-    # Create a unique file name by hashing the URL
-    url_hash = hashlib.md5(url.encode()).hexdigest()
-    return f"{url_hash}.xml"
 
 
 def download_and_extract_gz(url, destination_folder):
@@ -92,11 +86,14 @@ def download_and_extract_gz(url, destination_folder):
     try:
         if url.endswith(".xml") or url.endswith(".gz"):
             try:
-                response = requests.get(url, headers=headers, timeout=5)
-                response.raise_for_status()
+                xml_response = requests.get(url, headers=headers, timeout=5)
+                xml_response.raise_for_status()
 
-                if response.headers.get("content-type") == "application/json" and "error" in response.text.lower():
-                    error_data = json.loads(response.text)
+                if (
+                    xml_response.headers.get("content-type") == "application/json"
+                    and "error" in xml_response.text.lower()
+                ):
+                    error_data = json.loads(xml_response.text)
                     if (
                         "error" in error_data
                         and "message" in error_data["error"]
@@ -105,23 +102,23 @@ def download_and_extract_gz(url, destination_folder):
                         logger.warning(f"URL is forbidden: {url}")
                         return None
 
-                if response.url.endswith(".xml.gz"):
+                if xml_response.url.endswith(".xml.gz"):
                     try:
-                        sitemap_xml = response.text
+                        sitemap_xml = xml_response.text
                     except Exception as e:
                         logger.warning(f"Skipping processing. Error while decompressing: {url}. Error: {e}")
                         return None
 
                 elif url.endswith(".gz"):
                     try:
-                        decompressed_content = gzip.decompress(response.content)
+                        decompressed_content = gzip.decompress(xml_response.content)
                         # Convert bytes to a string using UTF-8 encoding
                         sitemap_xml = decompressed_content.decode("utf-8")
                     except Exception as e:
                         logger.warning(f"Skipping processing. Error while decompressing: {url}. Error: {e}")
                         return None
                 else:
-                    sitemap_xml = response.text
+                    sitemap_xml = xml_response.text
 
                 # Check if the decompressed/decoded content is in valid XML format
                 try:
@@ -178,78 +175,78 @@ def is_gz_url(url):
     return url.endswith(".gz")
 
 
-def process_nested_sitemaps(xml_content, extracted_file_paths):
+def process_nested_sitemaps(xml_content, extracted_xmls):
     # Find all <loc> tags in the XML content
     ua = UserAgent()
     headers = {"User-Agent": ua.random}
     destination_folder = "sitemap_files"
     if xml_content.endswith(".xml"):
-        loc_tags = re.findall(r"<loc>(.*?)</loc>", xml_content)
+        loc_tags_urls = re.findall(r"<loc>(.*?)</loc>", xml_content)
 
-        if not loc_tags:
+        if not loc_tags_urls:
             # If loc_tags is empty, skip processing and use xml_content as loc_tags
-            loc_tags = [xml_content]
+            loc_tags_urls = [xml_content]
     else:
-        loc_tags = [xml_content]
+        loc_tags_urls = [xml_content]
 
     # Lists to store URLs with .xml/.gz and nested sitemaps respectively
     xml_or_gz_urls = []
     nested_sitemaps = []
 
     # Separate .xml/.gz URLs and nested sitemaps
-    for loc_tag in loc_tags:
-        if is_xml_or_gz_url(loc_tag):
-            xml_or_gz_urls.append(loc_tag)
+    for loc_tag_url in loc_tags_urls:
+        if is_xml_or_gz_url(loc_tag_url):
+            xml_or_gz_urls.append(loc_tag_url)
         else:
-            nested_sitemaps.append(loc_tag)
+            nested_sitemaps.append(loc_tag_url)
 
-    has_gz_urls = any(is_gz_url(url) for url in loc_tags)
+    has_gz_urls = any(is_gz_url(url) for url in loc_tags_urls)
 
     if has_gz_urls:
-        for loc_tag in loc_tags:
-            if is_xml_or_gz_url(loc_tag):
-                extracted_file_path = download_and_extract_gz(loc_tag, destination_folder)
-                if extracted_file_path:
-                    extracted_file_paths.append(extracted_file_path)
-                    logger.info(f"Extracted: {loc_tag}")
+        for loc_tag_url in loc_tags_urls:
+            if is_xml_or_gz_url(loc_tag_url):
+                extracted_xml = download_and_extract_gz(loc_tag_url, destination_folder)
+                if extracted_xml:
+                    extracted_xmls.append(extracted_xml)
+                    logger.info(f"Extracted: {loc_tag_url}")
 
     # Loop through .xml/.gz URLs and download them
     for url in xml_or_gz_urls:
-        get_site_map_raw = requests.get(url, headers=headers, timeout=5)
-        get_site_map_raw.raise_for_status()
+        get_site_map = requests.get(url, headers=headers, timeout=5)
+        get_site_map.raise_for_status()
 
         # Check if the response contains a forbidden message
-        if "forbidden" in get_site_map_raw.text.lower():
+        if "forbidden" in get_site_map.text.lower():
             logger.warning(f"URL is forbidden: {url}")
             continue
 
         # If the response is valid, proceed with processing the sitemap
-        sitemap_xml = get_site_map_raw.text
+        sitemap_xml = get_site_map.text
 
-        loc_tags_raw = re.findall(r"<loc>(.*?)</loc>", sitemap_xml)
+        loc_urls = re.findall(r"<loc>(.*?)</loc>", sitemap_xml)
 
-        has_xml_urls = any(is_xml_or_gz_url(url) for url in loc_tags_raw)
+        has_xml_urls = any(is_xml_or_gz_url(url) for url in loc_urls)
 
         if has_xml_urls:
             # If there are .xml URLs in loc_tags_raw, process them individually
-            for loc_tag_raw in loc_tags_raw:
-                if is_xml_or_gz_url(loc_tag_raw):
-                    extracted_file_path = download_and_extract_gz(loc_tag_raw, destination_folder)
-                    if extracted_file_path:
-                        extracted_file_paths.append(extracted_file_path)
-                        logger.info(f"Extracted: {loc_tag_raw}")
+            for loc_url in loc_urls:
+                if is_xml_or_gz_url(loc_url):
+                    extracted_xml = download_and_extract_gz(loc_url, destination_folder)
+                    if extracted_xml:
+                        extracted_xmls.append(extracted_xml)
+                        logger.info(f"Extracted: {loc_url}")
         else:
             # If there are no .xml URLs in loc_tags_raw, process the original URL
-            extracted_file_path = download_and_extract_gz(get_site_map_raw.url, destination_folder)
-            if extracted_file_path:
-                extracted_file_paths.append(extracted_file_path)
-                logger.info(f"Extracted: {get_site_map_raw.url}")
+            extracted_xml = download_and_extract_gz(get_site_map.url, destination_folder)
+            if extracted_xml:
+                extracted_xmls.append(extracted_xml)
+                logger.info(f"Extracted: {get_site_map.url}")
 
     # Process nested sitemaps recursively
     for nested_sitemap_url in nested_sitemaps:
         nested_sitemap = requests.get(nested_sitemap_url, headers=headers)
         if nested_sitemap.status_code == 200:
-            process_nested_sitemaps(nested_sitemap.text, extracted_file_paths)
+            process_nested_sitemaps(nested_sitemap.text, extracted_xmls)
 
 
 def main():
@@ -259,7 +256,7 @@ def main():
     sitemap_urls = get_sitemap_urls_from_robots_txt(url)
 
     # Initialize an empty list to store all extracted file paths
-    extracted_file_paths = []
+    extracted_xmls = []
 
     # Loop through each sitemap URL and attempt to process it
     for sitemap_url in sitemap_urls:
@@ -275,23 +272,23 @@ def main():
 
             destination_folder = "sitemap_files"
             os.makedirs(destination_folder, exist_ok=True)
-            loc_tags = re.findall(r"<loc>(.*?)</loc>", sitemap_xml)
+            loc_tags_urls = re.findall(r"<loc>(.*?)</loc>", sitemap_xml)
 
             xml_or_gz_urls = []
-            for loc_tag in loc_tags:
-                if is_xml_or_gz_url(loc_tag):
-                    xml_or_gz_urls.append(loc_tag)
+            for loc_tag_url in loc_tags_urls:
+                if is_xml_or_gz_url(loc_tag_url):
+                    xml_or_gz_urls.append(loc_tag_url)
 
-            has_xml_urls = any(is_xml_or_gz_url(url) for url in loc_tags)
+            has_xml_urls = any(is_xml_or_gz_url(url) for url in loc_tags_urls)
 
             if has_xml_urls:
                 # Process each URL in xml_or_gz_urls and accumulate extracted files
-                for loc_tag in xml_or_gz_urls:
-                    process_nested_sitemaps(loc_tag, extracted_file_paths)
+                for loc_tag_url in xml_or_gz_urls:
+                    process_nested_sitemaps(loc_tag_url, extracted_xmls)
             else:
                 extracted_file_path = sitemap_xml
                 if extracted_file_path:
-                    extracted_file_paths.append(extracted_file_path)
+                    extracted_xmls.append(extracted_file_path)
                     logger.info(f"Extracted: {get_site_map.url}")
 
             # Create an empty DataFrame to store the combined sitemaps
@@ -301,8 +298,8 @@ def main():
             with concurrent.futures.ProcessPoolExecutor() as executor:
                 # Submit tasks to read and process sitemap files
                 futures = [
-                    executor.submit(process_sitemap_file, extracted_file_path, sitemap_url)
-                    for extracted_file_path in extracted_file_paths
+                    executor.submit(process_sitemap_file, extracted_xml, sitemap_url)
+                    for extracted_xml in extracted_xmls
                 ]
 
                 # Combine the results into a single DataFrame
