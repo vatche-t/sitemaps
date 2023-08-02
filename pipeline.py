@@ -33,9 +33,7 @@ def get_sitemap_urls_from_robots_txt(url):
     try:
         ua = UserAgent()
         headers = {"User-Agent": ua.random}
-        robots_response = requests.get(
-            f"{url.rstrip('/')}/robots.txt", allow_redirects=False, headers=headers, timeout=5
-        )
+        robots_response = requests.get(f"{url.rstrip('/')}/robots.txt", allow_redirects=False, headers=headers, timeout=15)
 
         # Check if the response is a redirect
         if robots_response.is_redirect:
@@ -86,13 +84,10 @@ def download_and_extract_gz(url, destination_folder):
     try:
         if url.endswith(".xml") or url.endswith(".gz"):
             try:
-                xml_response = requests.get(url, headers=headers, timeout=5)
+                xml_response = requests.get(url, headers=headers, allow_redirects=False)
                 xml_response.raise_for_status()
 
-                if (
-                    xml_response.headers.get("content-type") == "application/json"
-                    and "error" in xml_response.text.lower()
-                ):
+                if xml_response.headers.get("content-type") == "application/json" and "error" in xml_response.text.lower():
                     error_data = json.loads(xml_response.text)
                     if (
                         "error" in error_data
@@ -212,7 +207,7 @@ def process_nested_sitemaps(xml_content, extracted_xmls):
 
     # Loop through .xml/.gz URLs and download them
     for url in xml_or_gz_urls:
-        get_site_map = requests.get(url, headers=headers, timeout=5)
+        get_site_map = requests.get(url, headers=headers)
         get_site_map.raise_for_status()
 
         # Check if the response contains a forbidden message
@@ -252,7 +247,7 @@ def process_nested_sitemaps(xml_content, extracted_xmls):
 def main():
     ua = UserAgent()
     headers = {"User-Agent": ua.random}  # Select a random user-agent for each request
-    url = "https://www.webramz.com"
+    url = "https://www.mobilex.ir"
     sitemap_urls = get_sitemap_urls_from_robots_txt(url)
 
     # Initialize an empty list to store all extracted file paths
@@ -261,7 +256,7 @@ def main():
     # Loop through each sitemap URL and attempt to process it
     for sitemap_url in sitemap_urls:
         try:
-            get_site_map = requests.get(sitemap_url, headers=headers, timeout=5)
+            get_site_map = requests.get(sitemap_url, headers=headers, allow_redirects=False)
             get_site_map.raise_for_status()
 
             if "forbidden" in get_site_map.text.lower():
@@ -298,8 +293,7 @@ def main():
             with concurrent.futures.ProcessPoolExecutor() as executor:
                 # Submit tasks to read and process sitemap files
                 futures = [
-                    executor.submit(process_sitemap_file, extracted_xml, sitemap_url)
-                    for extracted_xml in extracted_xmls
+                    executor.submit(process_sitemap_file, extracted_xml, sitemap_url) for extracted_xml in extracted_xmls
                 ]
 
                 # Combine the results into a single DataFrame
