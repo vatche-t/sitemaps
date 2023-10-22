@@ -247,7 +247,7 @@ def process_nested_sitemaps(xml_content, extracted_xmls):
 def main():
     ua = UserAgent()
     headers = {"User-Agent": ua.random}  # Select a random user-agent for each request
-    url = "https://www.mobilex.ir"
+    url = "https://www.example.com"
     sitemap_urls = get_sitemap_urls_from_robots_txt(url)
 
     # Initialize an empty list to store all extracted file paths
