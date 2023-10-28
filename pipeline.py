@@ -12,7 +12,6 @@ from loguru import logger
 from fake_useragent import UserAgent
 
 import config
-from models.site_maps import SiteMapsDigikala
 
 
 DEFAULT_SITEMAP_URLS = [
@@ -33,7 +32,9 @@ def get_sitemap_urls_from_robots_txt(url):
     try:
         ua = UserAgent()
         headers = {"User-Agent": ua.random}
-        robots_response = requests.get(f"{url.rstrip('/')}/robots.txt", allow_redirects=False, headers=headers, timeout=15)
+        robots_response = requests.get(
+            f"{url.rstrip('/')}/robots.txt", allow_redirects=False, headers=headers, timeout=15
+        )
 
         # Check if the response is a redirect
         if robots_response.is_redirect:
@@ -87,7 +88,10 @@ def download_and_extract_gz(url, destination_folder):
                 xml_response = requests.get(url, headers=headers, allow_redirects=False)
                 xml_response.raise_for_status()
 
-                if xml_response.headers.get("content-type") == "application/json" and "error" in xml_response.text.lower():
+                if (
+                    xml_response.headers.get("content-type") == "application/json"
+                    and "error" in xml_response.text.lower()
+                ):
                     error_data = json.loads(xml_response.text)
                     if (
                         "error" in error_data
@@ -293,7 +297,8 @@ def main():
             with concurrent.futures.ProcessPoolExecutor() as executor:
                 # Submit tasks to read and process sitemap files
                 futures = [
-                    executor.submit(process_sitemap_file, extracted_xml, sitemap_url) for extracted_xml in extracted_xmls
+                    executor.submit(process_sitemap_file, extracted_xml, sitemap_url)
+                    for extracted_xml in extracted_xmls
                 ]
 
                 # Combine the results into a single DataFrame
