@@ -12,6 +12,7 @@ from loguru import logger
 from fake_useragent import UserAgent
 
 import config
+from models.site_maps import SiteMap
 
 
 DEFAULT_SITEMAP_URLS = [

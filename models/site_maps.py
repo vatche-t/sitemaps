@@ -12,7 +12,7 @@ ketabkala_database = PostgresqlDatabase(
 )
 
 
-class SiteMapsDigikala(Model):
+class SiteMap(Model):
     sitemap_url = TextField()
     loc = TextField()
     priority = FloatField()
@@ -21,4 +21,4 @@ class SiteMapsDigikala(Model):
         database = ketabkala_database
 
 
-SiteMapsDigikala.create_table(fail_silently=True)
+SiteMap.create_table(fail_silently=True)
