@@ -65,3 +65,6 @@ This Python application is designed to scrape sitemap data from websites and sto
 
 - **Notes:** Ensure proper network connectivity, and permissions to access the website's sitemaps. If you encounter a 403 Forbidden error, check the website's `robots.txt` file for sitemap access restrictions.
 
+
+
+Last updated on: 2024-02-13
